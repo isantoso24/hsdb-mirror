@@ -23,4 +23,4 @@ then upload `site/` to any static host (Netlify drag-and-drop, Cloudflare Pages,
   snapshots are kept permanently.
 - The download step refuses to publish if any topic fails or returns under 90% of the expected
   count, so an outage or removal at PubChem can't wipe the mirror.
-- Netlify: add repo secrets `NETLIFY_AUTH_TOKEN` and `NETLIFY_SITE_ID` and each run also deploys there.
+- Netlify: the project ID is in the workflow; add the repo secret `NETLIFY_AUTH_TOKEN` and each run also deploys there.

@@ -14,7 +14,7 @@ jobs:
     timeout-minutes: 300
     env:
       NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-      NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+      NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID || 'de377a64-2e9f-46ca-a316-d97b31420a42' }}  # Netlify project ID (not secret)
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
