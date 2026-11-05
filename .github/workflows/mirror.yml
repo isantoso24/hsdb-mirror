@@ -1,0 +1,33 @@
+name: Mirror HSDB to GitHub Pages
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 1 * *"   # refresh monthly
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency: { group: pages, cancel-in-progress: false }
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Download HSDB from PubChem
+        run: python3 scripts/download.py data
+      - name: Build static site
+        run: python3 scripts/build_site.py data site
+      - name: Report size
+        run: du -sh site site/hsdb-all-records.zip
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: site }
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: { name: github-pages, url: "${{ steps.d.outputs.page_url }}" }
+    steps:
+      - id: d
+        uses: actions/deploy-pages@v4
