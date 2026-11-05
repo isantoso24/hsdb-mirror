@@ -7,8 +7,8 @@ authoritative source: https://pubchem.ncbi.nlm.nih.gov/source/Hazardous%20Substa
 - `headings.txt` lists the HSDB topics to mirror (from the PubChem source page's download list).
 - `scripts/download.py headings.txt DATA_DIR` fetches every HSDB annotation for each topic from PubChem's
   PUG-View annotations API at 4 requests/second (PubChem's limit is 5). Resumable.
-- `scripts/build_site.py DATA_DIR SITE_DIR` renders one HTML page per record, a filterable index,
-  raw JSON copies and a single zip of everything.
+- `scripts/build_site.py DATA_DIR SITE_DIR` renders a page and CSV per topic, a page per chemical,
+  filterable indexes and one zip of all JSON and CSV.
 - `.github/workflows/mirror.yml` runs both on GitHub Actions and publishes to GitHub Pages
   (manual trigger plus a monthly refresh).
 
