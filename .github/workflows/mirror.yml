@@ -1,10 +1,10 @@
-name: Mirror HSDB to GitHub Pages
+name: Mirror HSDB
 on:
   workflow_dispatch:
   schedule:
     - cron: "0 6 1 * *"   # refresh monthly
 permissions:
-  contents: read
+  contents: write   # to attach the data zip to a GitHub Release
   pages: write
   id-token: write
 concurrency: { group: pages, cancel-in-progress: false }
@@ -12,16 +12,32 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 300
+    env:
+      NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+      NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
+      # Fails (and publishes nothing) if PubChem is unreachable or returns
+      # far fewer records than expected, so the last good mirror stays up.
       - name: Download HSDB from PubChem
         run: python3 scripts/download.py headings.txt data
       - name: Build static site
         run: python3 scripts/build_site.py data site
       - name: Report size
-        run: du -sh site site/hsdb-all.zip; cat data/report.json | head -50; cat data/failed.json
+        run: du -sh site site/hsdb-all.zip
+      - name: Archive data as a GitHub Release
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          tag="data-$(date -u +%Y-%m-%d)"
+          gh release create "$tag" site/hsdb-all.zip data/report.json \
+            --title "HSDB snapshot $(date -u +%Y-%m-%d)" \
+            --notes "All HSDB topics in headings.txt, downloaded from PubChem (NLM/NCBI). JSON + CSV." \
+            || gh release upload "$tag" site/hsdb-all.zip data/report.json --clobber
+      - name: Deploy to Netlify
+        if: env.NETLIFY_AUTH_TOKEN != '' && env.NETLIFY_SITE_ID != ''
+        run: npx --yes netlify-cli@17.38.1 deploy --prod --dir site --no-build --message "HSDB mirror $(date -u +%F)"
       - uses: actions/upload-pages-artifact@v3
         with: { path: site }
   deploy:

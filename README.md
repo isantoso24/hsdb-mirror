@@ -14,3 +14,13 @@ authoritative source: https://pubchem.ncbi.nlm.nih.gov/source/Hazardous%20Substa
 
 Local run: `python3 scripts/download.py headings.txt data && python3 scripts/build_site.py data site`,
 then upload `site/` to any static host (Netlify drag-and-drop, Cloudflare Pages, GitHub Pages).
+
+## Hosting and preservation
+
+- The mirror is a full copy. The website does not load anything from PubChem, so it keeps
+  working if PubChem goes away (only the "PubChem CID" links would break).
+- Each successful run attaches `hsdb-all.zip` (all JSON + CSV) to a GitHub Release, so dated
+  snapshots are kept permanently.
+- The download step refuses to publish if any topic fails or returns under 90% of the expected
+  count, so an outage or removal at PubChem can't wipe the mirror.
+- Netlify: add repo secrets `NETLIFY_AUTH_TOKEN` and `NETLIFY_SITE_ID` and each run also deploys there.

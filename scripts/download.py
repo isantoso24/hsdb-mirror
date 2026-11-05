@@ -96,6 +96,15 @@ def main():
     print(f"done: {len(report)} headings, {sum(r['count'] for r in report)} "
           f"annotations, {len(failed)} failed", flush=True)
 
+    # Safety guard: never publish a partial or empty mirror. If PubChem is
+    # down, changed, or HSDB was removed, stop here so the last good copy
+    # stays online.
+    short = [r for r in report if r["count"] < 0.9 * r["expected"]]
+    if failed or short:
+        sys.exit(f"refusing to publish: {len(failed)} failed, "
+                 f"{len(short)} topics under 90% of expected: "
+                 + ", ".join(r["heading"] for r in short[:10]))
+
 
 if __name__ == "__main__":
     main()
