@@ -37,6 +37,7 @@ jobs:
             || gh release upload "$tag" site/hsdb-all.zip data/report.json --clobber
       - name: Deploy to Netlify
         if: env.NETLIFY_AUTH_TOKEN != '' && env.NETLIFY_SITE_ID != ''
+        continue-on-error: true   # an expired token must not block GitHub Pages
         run: npx --yes netlify-cli@17.38.1 deploy --prod --dir site --no-build --message "HSDB mirror $(date -u +%F)"
       - uses: actions/upload-pages-artifact@v3
         with: { path: site }
