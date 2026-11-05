@@ -1,0 +1,149 @@
+# HSDB headings to mirror (from PubChem source page download list). heading<TAB>expected count
+13C NMR Spectra	118
+1D NMR Spectra	1285
+1H NMR Spectra	14
+Acceptable Daily Intakes	264
+Allowable Tolerances	740
+Analytic Laboratory Methods	3336
+Animal Concentrations	316
+Antidote and Emergency Treatment	4178
+Artificial Pollution Sources	3326
+Associated Chemicals	1306
+Atmospheric Concentrations	1007
+Atmospheric Standards	706
+Autoignition Temperature	596
+Average Daily Intake	400
+Biological Half-Life	1586
+Bionecessity	158
+Body Burden	742
+Boiling Point	2696
+CAS	5934
+CERCLA Reportable Quantities	926
+Clean Water Act Requirements	714
+Cleanup Methods	2615
+Clinical Laboratory Methods	1520
+Color/Form	4878
+Consumption Patterns	1054
+Corrosivity	654
+Critical Temperature and Pressure	496
+DOT Emergency Guidelines	1310
+Decomposition	3170
+Density	3141
+Dielectric Constant	3
+Dispersion	1
+Disposal Methods	5017
+Dissociation Constants	1120
+Drug Idiosyncrasies	76
+Drug Tolerance	208
+Drug Warnings	1477
+EPA Hazardous Waste Number	649
+Ecotoxicity Excerpts	1202
+Ecotoxicity Values	1757
+Effluent Concentrations	1421
+Emergency Response Planning Guidelines	26
+Environmental Abiotic Degradation	3247
+Environmental Bioconcentration	3182
+Environmental Biodegradation	2373
+Environmental Fate	3301
+Environmental Fate/Exposure Summary	3200
+Environmental Water Concentrations	1688
+Evidence for Carcinogenicity	1441
+Explosive Limits and Potential	883
+FDA Requirements	1822
+FIFRA Requirements	1024
+Federal Drinking Water Guidelines	502
+Federal Drinking Water Standards	355
+Fire Fighting Procedures	2704
+Fire Potential	1749
+Firefighting Hazards	564
+Fish/Seafood Concentrations	572
+Flammable Limits	424
+Flash Point	1277
+Food Survey Values	1070
+Formulations/Preparations	3576
+GHS Classification	680
+General Manufacturing Information	3516
+Hazardous Reactivities and Incompatibilities	2341
+Hazardous Substances DataBank Number	6060
+Hazards Summary	205
+Heat of Combustion	492
+Heat of Vaporization	704
+Henry's Law Constant	682
+History and Incidents	295
+Human Toxicity Excerpts	4437
+Human Toxicity Values	189
+IR Spectra	1837
+Immediately Dangerous to Life or Health (IDLH)	699
+Impurities	765
+Interactions	2626
+LogP	2143
+Maximum Drug Dose	47
+Mechanism of Action	2494
+Medical Surveillance	1035
+Melting Point	4109
+Metabolism/Metabolites	3220
+Methods of Manufacturing	4803
+Milk Concentrations	803
+Molecular Formula	5743
+Molecular Weight	5585
+NFPA Hazard Classification	840
+NIOSH Recommendations	1006
+National Toxicology Program Studies	621
+Natural Pollution Sources	1538
+Non-Human Toxicity Excerpts	5007
+Non-Human Toxicity Values	3124
+OSHA Standards	851
+Odor	2356
+Odor Threshold	433
+Ongoing Test Status	1152
+Optical Rotation	457
+Other Environmental Concentrations	854
+Other Experimental Properties	4008
+Other Hazardous Reactions	311
+Other MS	1754
+Other Spectra	881
+Other Standards Regulations and Guidelines	700
+Personal Protective Equipment (PPE)	3083
+Plant Concentrations	746
+Polymerization	174
+Populations at Special Risk	1150
+Preventive Measures	3433
+Probable Routes of Human Exposure	3674
+RCRA Requirements	621
+Radiation Limits and Potential	46
+Raman Spectra	253
+Refractive Index	1808
+Relative Evaporation Rate	141
+Reported Fatal Dose	493
+Sampling Procedures	549
+Sediment/Soil Concentrations	880
+Shipment Methods and Regulations	1678
+Shipping Name/ Number DOT/UN/NA/IMO	1413
+Skin, Eye, and Respiratory Irritations	2195
+Soil Adsorption/Mobility	3148
+Soil Standards	2
+Solubility	4719
+Special Reports	2453
+Stability/Shelf Life	2469
+Standard Transportation Number	771
+State Drinking Water Guidelines	836
+State Drinking Water Standards	286
+Storage Conditions	3087
+Surface Tension	535
+TSCA Requirements	605
+TSCA Test Submissions	479
+Taste	754
+Therapeutic Uses	1999
+Threshold Limit Values (TLV)	1169
+Toxic Combustion Products	1437
+Toxicity Summary	1408
+U.S. Exports	937
+U.S. Imports	1405
+U.S. Production	2746
+UV Spectra	1585
+Uses	5587
+Vapor Density	885
+Vapor Pressure	2275
+Viscosity	683
+Volatilization from Water/Soil	3127
+pH	618

@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
-"""Turn downloaded PUG-View JSON records into a static, browsable site.
+"""Turn downloaded HSDB heading annotations into a static, browsable site.
 
 Usage: python3 build_site.py DATA_DIR SITE_DIR
 """
+import csv
 import html
+import io
 import json
+import re
 import shutil
 import sys
 import zipfile
+from collections import defaultdict
 from datetime import date
 from pathlib import Path
 
@@ -25,113 +29,142 @@ CSS = """
 @media (prefers-color-scheme:dark){:root{--bg:#14181c;--fg:#e4e8eb;--mut:#9aa5ae;--line:#2c343b;--acc:#6db3ff}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);
 font:16px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
-main{max-width:900px;margin:0 auto;padding:24px 16px 64px}
+main{max-width:960px;margin:0 auto;padding:24px 16px 64px}
 a{color:var(--acc)}h1{font-size:1.6rem;line-height:1.25}
-h2{font-size:1.25rem;border-bottom:1px solid var(--line);padding-bottom:4px;margin-top:2em}
-h3{font-size:1.05rem}h4,h5,h6{font-size:1rem}
+h2{font-size:1.2rem;border-bottom:1px solid var(--line);padding-bottom:4px;margin-top:2em}
 .attr{font-size:.85rem;color:var(--mut);border:1px solid var(--line);border-radius:6px;padding:10px 12px}
-.info{margin:.4em 0 .9em}.info .n{font-weight:600}.ref{color:var(--mut);font-size:.8rem}
+.entry{padding:10px 0;border-bottom:1px solid var(--line)}.entry .who{font-weight:600}
+.ref{color:var(--mut);font-size:.8rem}.mut{color:var(--mut)}
 input{width:100%;font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg)}
 ul.list{list-style:none;padding:0}ul.list li{padding:6px 0;border-bottom:1px solid var(--line)}
-.mut{color:var(--mut)}details{margin:.3em 0}pre{white-space:pre-wrap}
 """
 
+FILTER_JS = """<script>
+const q=document.getElementById('q'),items=[...document.querySelectorAll('[data-f]')],c=document.getElementById('count');
+function f(){const s=q.value.trim().toLowerCase();let n=0;for(const el of items){const m=!s||el.textContent.toLowerCase().includes(s);el.hidden=!m;n+=m}c.textContent=n.toLocaleString()+' shown'}
+q.addEventListener('input',f);f();
+</script>"""
 
-def page(title, body, depth=0):
+
+def slug(s):
+    return re.sub(r"[^a-z0-9]+", "-", str(s).lower()).strip("-")
+
+
+def page(title, body, depth=0, home=True):
     up = "../" * depth
+    nav = f'<p><a href="{up}index.html">HSDB mirror home</a></p>' if home else ""
     return (f'<!doctype html><html lang="en"><head><meta charset="utf-8">'
             f'<meta name="viewport" content="width=device-width,initial-scale=1">'
             f'<title>{html.escape(title)}</title><link rel="stylesheet" href="{up}style.css">'
-            f'</head><body><main><p><a href="{up}index.html">HSDB mirror home</a></p>'
-            f'{body}<hr><p class="attr">{ATTRIB}</p></main></body></html>')
+            f'</head><body><main>{nav}{body}<hr><p class="attr">{ATTRIB}</p></main></body></html>')
 
 
-def value_html(v):
-    parts = []
-    for s in v.get("StringWithMarkup", []):
-        parts.append(html.escape(s.get("String", "")).replace("\n", "<br>"))
+def value_text(v):
+    parts = [s.get("String", "") for s in v.get("StringWithMarkup", [])]
     if "Number" in v:
-        nums = ", ".join(str(n) for n in v["Number"])
-        parts.append(nums + (" " + html.escape(v["Unit"]) if v.get("Unit") else ""))
+        parts.append(", ".join(str(n) for n in v["Number"]) + (" " + v["Unit"] if v.get("Unit") else ""))
     if "Boolean" in v:
         parts.append(", ".join(str(b) for b in v["Boolean"]))
-    if "ExternalDataURL" in v:
-        parts += [f'<a href="{html.escape(u)}">{html.escape(u)}</a>' for u in v["ExternalDataURL"]]
-    return "<br>".join(parts)
+    parts += v.get("ExternalDataURL", [])
+    return "\n".join(p for p in parts if p)
 
 
-def section_html(sec, level):
-    h = min(level, 6)
-    out = [f'<h{h}>{html.escape(sec.get("TOCHeading", ""))}</h{h}>']
-    if sec.get("Description"):
-        out.append(f'<p class="mut">{html.escape(sec["Description"])}</p>')
-    for info in sec.get("Information", []):
-        name = f'<span class="n">{html.escape(info["Name"])}:</span> ' if info.get("Name") else ""
-        ref = f' <span class="ref">[{info["ReferenceNumber"]}]</span>' if "ReferenceNumber" in info else ""
-        out.append(f'<div class="info">{name}{value_html(info.get("Value", {}))}{ref}</div>')
-    for sub in sec.get("Section", []):
-        out.append(section_html(sub, level + 1))
-    return "\n".join(out)
+def esc(t):
+    return html.escape(t).replace("\n", "<br>")
+
+
+def rows_of(ann):
+    """Flatten one annotation into (name, hsdb_id, cids, value, ref) rows."""
+    cids = ann.get("LinkedRecords", {}).get("CID", [])
+    for d in ann.get("Data", []) or [{}]:
+        ref = "; ".join(d.get("Reference", [])) if isinstance(d.get("Reference"), list) else ""
+        label = d.get("Name", "")
+        val = value_text(d.get("Value", {}))
+        if label:
+            val = f"{label}: {val}"
+        yield ann.get("Name", ""), str(ann.get("SourceID", "")), cids, val, ref, ann.get("URL", "")
 
 
 def main():
     data, site = Path(sys.argv[1]), Path(sys.argv[2])
     if site.exists():
         shutil.rmtree(site)
-    (site / "record").mkdir(parents=True)
+    for d in ("heading", "chemical", "csv"):
+        (site / d).mkdir(parents=True)
     (site / "style.css").write_text(CSS)
 
-    index = []
-    files = sorted((data / "records").glob("*.json"), key=lambda p: int(p.stem))
+    files = sorted((data / "headings").glob("*.json"))
+    chemicals = defaultdict(lambda: {"name": "", "cids": set(), "by_heading": defaultdict(list)})
+    heading_index = []
+
     for f in files:
-        try:
-            rec = json.loads(f.read_text())["Record"]
-        except (ValueError, KeyError):
-            continue
-        cid = f.stem
-        title = rec.get("RecordTitle", f"CID {cid}")
-        refs = rec.get("Reference", [])
-        hsdb_ids = sorted({r.get("SourceID") for r in refs if r.get("SourceID")})
-        body = [f"<h1>{html.escape(title)}</h1>",
-                f'<p class="mut">PubChem CID <a href="https://pubchem.ncbi.nlm.nih.gov/compound/{cid}">{cid}</a>'
-                + (f" · HSDB {', '.join(html.escape(str(i)) for i in hsdb_ids)}" if hsdb_ids else "")
-                + f' · raw JSON is in <a href="../hsdb-all-records.zip">the full download</a></p>']
-        for sec in rec.get("Section", []):
-            body.append(section_html(sec, 2))
-        if refs:
-            body.append("<h2>References</h2><ol>")
-            for r in refs:
-                bits = [r.get("SourceName", ""), r.get("Name", ""), r.get("Description", "")]
-                link = f' <a href="{html.escape(r["URL"])}">source</a>' if r.get("URL") else ""
-                body.append(f'<li value="{r.get("ReferenceNumber", "")}">'
-                            f'{html.escape(" · ".join(b for b in bits if b))}{link}</li>')
-            body.append("</ol>")
-        (site / "record" / f"{cid}.html").write_text(page(title, "\n".join(body), 1))
-        index.append({"c": int(cid), "t": title, "h": hsdb_ids})
+        doc = json.loads(f.read_text())
+        h, s = doc["heading"], f.stem
+        rows = [r for a in doc["annotations"] for r in rows_of(a)]
+        heading_index.append((h, s, len(rows), len(doc["annotations"])))
 
-    (site / "index.json").write_text(json.dumps(index, separators=(",", ":")))
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(["chemical", "hsdb_number", "pubchem_cids", "value", "reference", "url"])
+        body = [f"<h1>{html.escape(h)}</h1>",
+                f'<p class="mut">{len(rows):,} entries · <a href="../csv/{s}.csv">download CSV</a></p>',
+                '<input id="q" type="search" placeholder="Filter by chemical or text" aria-label="Filter">'
+                '<p class="mut" id="count"></p>']
+        for name, hid, cids, val, ref, url in rows:
+            w.writerow([name, hid, " ".join(map(str, cids)), val, ref, url])
+            key = hid or (str(cids[0]) if cids else slug(name))
+            c = chemicals[key]
+            c["name"] = c["name"] or name
+            c["cids"].update(cids)
+            c["by_heading"][h].append((val, ref))
+            body.append(f'<div class="entry" data-f><a class="who" href="../chemical/{slug(key)}.html">'
+                        f'{html.escape(name)}</a><div>{esc(val)}</div>'
+                        + (f'<div class="ref">{esc(ref)}</div>' if ref else "") + "</div>")
+        body.append(FILTER_JS)
+        (site / "csv" / f"{s}.csv").write_text(buf.getvalue())
+        (site / "heading" / f"{s}.html").write_text(page(h, "\n".join(body), 1))
 
-    with zipfile.ZipFile(site / "hsdb-all-records.zip", "w", zipfile.ZIP_DEFLATED) as z:
+    for key, c in chemicals.items():
+        cid_links = ", ".join(f'<a href="https://pubchem.ncbi.nlm.nih.gov/compound/{x}">{x}</a>'
+                              for x in sorted(c["cids"]))
+        body = [f"<h1>{html.escape(c['name'])}</h1>",
+                f'<p class="mut">HSDB {html.escape(key)}' + (f" · PubChem CID {cid_links}" if cid_links else "") + "</p>"]
+        for h in sorted(c["by_heading"]):
+            body.append(f'<h2><a href="../heading/{slug(h)}.html">{html.escape(h)}</a></h2>')
+            for val, ref in c["by_heading"][h]:
+                body.append(f'<div class="entry"><div>{esc(val)}</div>'
+                            + (f'<div class="ref">{esc(ref)}</div>' if ref else "") + "</div>")
+        (site / "chemical" / f"{slug(key)}.html").write_text(page(c["name"], "\n".join(body), 1))
+
+    chem_list = sorted(chemicals.items(), key=lambda kv: kv[1]["name"].lower())
+    body = ["<h1>All chemicals</h1>",
+            '<input id="q" type="search" placeholder="Filter by name or HSDB number" aria-label="Filter">'
+            '<p class="mut" id="count"></p><ul class="list">']
+    body += [f'<li data-f><a href="chemical/{slug(k)}.html">{html.escape(c["name"])}</a> '
+             f'<span class="mut">HSDB {html.escape(k)}</span></li>' for k, c in chem_list]
+    body.append("</ul>" + FILTER_JS)
+    (site / "chemicals.html").write_text(page("All chemicals", "\n".join(body)))
+
+    with zipfile.ZipFile(site / "hsdb-all.zip", "w", zipfile.ZIP_DEFLATED) as z:
         for f in files:
-            z.write(f, f"records/{f.name}")
-        if (data / "annotations.json").exists():
-            z.write(data / "annotations.json", "annotations.json")
+            z.write(f, f"json/{f.name}")
+        for f in sorted((site / "csv").glob("*.csv")):
+            z.write(f, f"csv/{f.name}")
 
-    rows = "\n".join(f'<li><a href="record/{e["c"]}.html">{html.escape(e["t"])}</a> '
-                     f'<span class="mut">CID {e["c"]}' + (f' · HSDB {", ".join(map(str, e["h"]))}' if e["h"] else '') + '</span></li>' for e in index)
-    body = f"""<h1>Hazardous Substances Data Bank (HSDB) mirror</h1>
-<p>{len(index):,} HSDB records, mirrored from PubChem on {date.today().isoformat()}.
-Download everything: <a href="hsdb-all-records.zip">hsdb-all-records.zip</a> (PUG-View JSON).</p>
-<input id="q" type="search" placeholder="Filter by chemical name, CID or HSDB number" aria-label="Filter">
-<p class="mut" id="count"></p><ul class="list" id="list">{rows}</ul>
-<script>
-const q=document.getElementById('q'),items=[...document.querySelectorAll('#list li')],c=document.getElementById('count');
-function f(){{const s=q.value.trim().toLowerCase();let n=0;for(const li of items){{const m=!s||li.textContent.toLowerCase().includes(s);li.hidden=!m;n+=m}}c.textContent=n+' shown'}}
-q.addEventListener('input',f);f();
-</script>"""
-    (site / "index.html").write_text(page("HSDB mirror", body).replace(
-        '<p><a href="index.html">HSDB mirror home</a></p>', ""))
-    print(f"built {len(index)} record pages into {site}")
+    total = sum(r for _, _, r, _ in heading_index)
+    body = [f"<h1>Hazardous Substances Data Bank (HSDB) mirror</h1>",
+            f"<p>{len(heading_index)} topics, {total:,} entries across {len(chemicals):,} chemicals, "
+            f"mirrored from PubChem on {date.today().isoformat()}.</p>",
+            f'<p><a href="chemicals.html">Browse by chemical</a> · '
+            f'<a href="hsdb-all.zip">Download everything</a> (JSON and CSV)</p>',
+            '<h2>Topics</h2><input id="q" type="search" placeholder="Filter topics" aria-label="Filter">'
+            '<p class="mut" id="count"></p><ul class="list">']
+    body += [f'<li data-f><a href="heading/{s}.html">{html.escape(h)}</a> '
+             f'<span class="mut">{n:,} entries · <a href="csv/{s}.csv">CSV</a></span></li>'
+             for h, s, n, _ in sorted(heading_index)]
+    body.append("</ul>" + FILTER_JS)
+    (site / "index.html").write_text(page("HSDB mirror", "\n".join(body), home=False))
+    print(f"built {len(heading_index)} topics, {len(chemicals)} chemicals, {total} entries")
 
 
 if __name__ == "__main__":

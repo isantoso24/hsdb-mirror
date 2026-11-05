@@ -17,11 +17,11 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - name: Download HSDB from PubChem
-        run: python3 scripts/download.py data
+        run: python3 scripts/download.py headings.txt data
       - name: Build static site
         run: python3 scripts/build_site.py data site
       - name: Report size
-        run: du -sh site site/hsdb-all-records.zip
+        run: du -sh site site/hsdb-all.zip; cat data/report.json | head -50; cat data/failed.json
       - uses: actions/upload-pages-artifact@v3
         with: { path: site }
   deploy:

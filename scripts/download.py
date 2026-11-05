@@ -1,102 +1,100 @@
 #!/usr/bin/env python3
-"""Download every HSDB record from PubChem via its official APIs.
+"""Download the HSDB annotations for each heading in headings.txt from PubChem.
 
-Step 1: list all HSDB annotations (SDQ, the service behind PubChem's
-        source page "Download" button) to get the compound IDs.
-Step 2: fetch each compound's HSDB-only record from PUG-View.
+Uses the official PUG-View "annotations by heading" API, filtered to the
+HSDB source, paging through results. Rate limited to 4 requests/second
+(PubChem allows 5). Resumable: headings already saved are skipped.
 
-Rate limited to stay under PubChem's 5 requests/second policy.
-Resumable: records already on disk are skipped.
-
-Usage: python3 download.py OUT_DIR
+Usage: python3 download.py HEADINGS_FILE OUT_DIR
 """
 import json
+import re
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
 
 SOURCE = "Hazardous Substances Data Bank (HSDB)"
-BASE = "https://pubchem.ncbi.nlm.nih.gov"
+API = "https://pubchem.ncbi.nlm.nih.gov/rest/pug_view/annotations/heading/JSON"
 UA = "hsdb-mirror/1.0 (archival mirror; python-urllib)"
-MIN_INTERVAL = 0.25  # 4 requests/second
+MIN_INTERVAL = 0.25
 _last = 0.0
 
 
-def get(url, tries=5):
+def slug(s):
+    return re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")
+
+
+def get_json(params, tries=6):
     global _last
+    url = API + "?" + urllib.parse.urlencode(params)
     for attempt in range(tries):
         wait = MIN_INTERVAL - (time.time() - _last)
         if wait > 0:
             time.sleep(wait)
         _last = time.time()
-        req = urllib.request.Request(url, headers={"User-Agent": UA})
         try:
-            with urllib.request.urlopen(req, timeout=120) as r:
-                return r.read()
+            req = urllib.request.Request(url, headers={"User-Agent": UA})
+            with urllib.request.urlopen(req, timeout=180) as r:
+                return json.loads(r.read())
         except urllib.error.HTTPError as e:
-            if e.code == 404:
-                return None
-            if e.code in (429, 503, 504, 500):
+            body = e.read()[:300].decode("utf-8", "replace")
+            if e.code in (429, 500, 502, 503, 504) and attempt < tries - 1:
                 time.sleep(2 ** attempt * 2)
                 continue
-            raise
-        except (urllib.error.URLError, TimeoutError):
+            raise RuntimeError(f"HTTP {e.code} for {url}: {body}")
+        except (urllib.error.URLError, TimeoutError) as e:
+            if attempt == tries - 1:
+                raise RuntimeError(f"{e} for {url}")
             time.sleep(2 ** attempt * 2)
-    raise RuntimeError(f"giving up on {url}")
 
 
-def list_annotations():
-    query = {
-        "download": "*",
-        "collection": "annotation",
-        "where": {"ands": [{"sourcename": SOURCE}]},
-        "order": ["cid,asc"],
-        "start": 1,
-        "limit": 10000000,
-    }
-    url = (f"{BASE}/sdq/sdqagent.cgi?infmt=json&outfmt=json&query="
-           + urllib.parse.quote(json.dumps(query)))
-    data = json.loads(get(url))
-    if isinstance(data, dict):  # some SDQ versions wrap rows
-        data = data.get("SDQOutputSet", [{}])[0].get("rows", data)
-    return data
+def fetch_heading(heading):
+    out, page, total = [], 1, 1
+    while page <= total:
+        d = get_json({"heading": heading, "heading_type": "Compound",
+                      "source": SOURCE, "page": page})["Annotations"]
+        out += d.get("Annotation", [])
+        total = d.get("TotalPages", 1)
+        page += 1
+    return out
 
 
 def main():
-    out = Path(sys.argv[1])
-    rec_dir = out / "records"
-    rec_dir.mkdir(parents=True, exist_ok=True)
+    headings = []
+    for line in Path(sys.argv[1]).read_text().splitlines():
+        if line and not line.startswith("#"):
+            name, _, count = line.partition("\t")
+            headings.append((name, int(count or 0)))
+    out = Path(sys.argv[2]) / "headings"
+    out.mkdir(parents=True, exist_ok=True)
 
-    index_path = out / "annotations.json"
-    if index_path.exists():
-        rows = json.loads(index_path.read_text())
-    else:
-        rows = list_annotations()
-        index_path.write_text(json.dumps(rows))
-    cids = sorted({int(str(c).split("|")[0]) for r in rows
-                   for c in [r.get("cid")] if c not in (None, "")})
-    print(f"{len(rows)} annotations across {len(cids)} compounds", flush=True)
-
-    failed = []
-    src = urllib.parse.quote(SOURCE)
-    for i, cid in enumerate(cids, 1):
-        dest = rec_dir / f"{cid}.json"
+    report, failed = [], []
+    for i, (h, expected) in enumerate(headings, 1):
+        dest = out / f"{slug(h)}.json"
         if dest.exists():
-            continue
-        try:
-            body = get(f"{BASE}/rest/pug_view/data/compound/{cid}/JSON?source={src}")
-        except Exception as e:  # keep going, report at the end
-            failed.append((cid, str(e)))
-            continue
-        if body:
-            dest.write_bytes(body)
-        if i % 100 == 0:
-            print(f"{i}/{len(cids)}", flush=True)
+            got = len(json.loads(dest.read_text())["annotations"])
+        else:
+            try:
+                ann = fetch_heading(h)
+            except Exception as e:
+                print(f"[{i}/{len(headings)}] FAILED {h}: {e}", flush=True)
+                failed.append({"heading": h, "error": str(e)})
+                if i == 1:
+                    sys.exit("first heading failed; API format likely wrong")
+                continue
+            dest.write_text(json.dumps({"heading": h, "annotations": ann}))
+            got = len(ann)
+        print(f"[{i}/{len(headings)}] {h}: {got} (page said {expected})", flush=True)
+        report.append({"heading": h, "slug": slug(h), "count": got, "expected": expected})
 
-    (out / "failed.json").write_text(json.dumps(failed, indent=1))
-    print(f"done; {len(failed)} failures", flush=True)
+    meta = Path(sys.argv[2])
+    (meta / "report.json").write_text(json.dumps(report, indent=1))
+    (meta / "failed.json").write_text(json.dumps(failed, indent=1))
+    print(f"done: {len(report)} headings, {sum(r['count'] for r in report)} "
+          f"annotations, {len(failed)} failed", flush=True)
 
 
 if __name__ == "__main__":
