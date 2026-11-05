@@ -1,0 +1,26 @@
+name: Rebuild from latest snapshot
+# Rebuilds the site from the newest GitHub Release zip (no PubChem needed)
+# and deploys it to Netlify. Useful if PubChem is ever unavailable.
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    env:
+      NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+      NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID || 'de377a64-2e9f-46ca-a316-d97b31420a42' }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Fetch latest snapshot
+        run: |
+          gh release download --repo "$GITHUB_REPOSITORY" --pattern hsdb-all.zip --dir snap
+          mkdir -p data/headings
+          unzip -q -j snap/hsdb-all.zip 'json/*' -d data/headings
+      - name: Build static site
+        run: python3 scripts/build_site.py data site
+      - name: Deploy to Netlify
+        run: npx --yes netlify-cli@17.38.1 deploy --prod --dir site --message "HSDB mirror from snapshot"
